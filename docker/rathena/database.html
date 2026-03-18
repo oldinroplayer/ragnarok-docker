@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Ragnarok Procedural Database</title>
+
+<style>
+
+body{
+font-family:Arial;
+background:linear-gradient(160deg,#0f2027,#203a43,#2c5364);
+color:#e0f7f7;
+margin:40px;
+}
+
+h1{
+color:#7fe3ea;
+}
+
+.searchbox{
+position:relative;
+display:inline-block;
+margin-bottom:10px;
+}
+
+input{
+padding:10px;
+font-size:16px;
+width:260px;
+background:#0e2a30;
+border:1px solid #2f7a83;
+color:#d6ffff;
+}
+
+.autocomplete{
+background:#132e35;
+border:1px solid #2f7a83;
+position:absolute;
+top:100%;
+left:0;
+max-height:220px;
+overflow-y:auto;
+z-index:9999;
+width:100%;
+}
+
+.autoitem{
+padding:8px;
+cursor:pointer;
+}
+
+.autoitem:hover{
+background:#1d4750;
+}
+
+.section{
+margin-top:25px;
+padding:15px;
+background:#132e35;
+border-left:4px solid #2f7a83;
+border-radius:6px;
+}
+
+.title{
+font-size:22px;
+margin-bottom:10px;
+color:#7fe3ea;
+}
+
+.mob{
+cursor:pointer;
+padding:6px;
+color:#7fe3ea;
+}
+
+.mob:hover{
+background:#1d4750;
+}
+
+.drop{
+padding-left:20px;
+color:#a8fff4;
+}
+
+.stats{
+margin-top:10px;
+line-height:1.6;
+}
+
+.sprite{
+width:48px;
+height:48px;
+margin-bottom:10px;
+image-rendering:pixelated;
+border-radius:6px;
+}
+
+.tag{
+display:inline-block;
+padding:3px 8px;
+border-radius:4px;
+background:#1d4750;
+margin-left:8px;
+font-size:12px;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>Ragnarok Database</h1>
+
+<div class="searchbox">
+<input id="itemSearch" placeholder="Search item">
+<div id="itemAuto" class="autocomplete"></div>
+</div>
+
+<br>
+
+<div class="searchbox">
+<input id="mobSearch" placeholder="Search monster">
+<div id="mobAuto" class="autocomplete"></div>
+</div>
+
+<div id="results"></div>
+
+<script>
+
+let items={}
+let itemToMobs={}
+let mobToItems={}
+let mobStats={}
+let mobSpawn={}
+let mobSkills={}
+
+let itemNames=[]
+let mobNames=[]
+
+async function load(){
+
+items = await (await fetch("/db/items.json")).json()
+itemToMobs = await (await fetch("/db/item_to_mobs.json")).json()
+mobToItems = await (await fetch("/db/mob_to_items.json")).json()
+mobStats = await (await fetch("/db/mob_stats.json")).json()
+mobSpawn = await (await fetch("/db/mob_spawn.json")).json()
+
+try{
+mobSkills = await (await fetch("/db/mob_skills.json")).json()
+}catch(e){}
+
+buildIndexes()
+
+}
+
+function buildIndexes(){
+
+for(let id in items){
+
+itemNames.push({
+id:id,
+name:items[id]
+})
+
+}
+
+for(let id in mobStats){
+
+mobNames.push({
+id:id,
+name:mobStats[id].name
+})
+
+}
+
+}
+
+function generateMobSprite(id){
+
+let canvas=document.createElement("canvas")
+canvas.width=32
+canvas.height=32
+
+let ctx=canvas.getContext("2d")
+
+let r=(id*53)%255
+let g=(id*97)%255
+let b=(id*173)%255
+
+ctx.fillStyle=`rgb(${r},${g},${b})`
+ctx.fillRect(0,0,32,32)
+
+ctx.fillStyle="white"
+ctx.fillRect(8,8,16,16)
+
+ctx.fillStyle="black"
+ctx.fillRect(12,12,4,4)
+ctx.fillRect(20,12,4,4)
+
+return canvas.toDataURL()
+
+}
+
+function computeThreat(stats){
+
+let score =
+parseInt(stats.hp)/100 +
+parseInt(stats.atk1) +
+parseInt(stats.def)*2 +
+parseInt(stats.level)*3
+
+if(score < 50) return "Low"
+if(score < 200) return "Medium"
+if(score < 500) return "High"
+return "Boss"
+
+}
+
+function autocomplete(input,data,box){
+
+let q=input.value.trim().toLowerCase()
+
+box.innerHTML=""
+
+if(q.length==0) return
+
+let start=[]
+let contains=[]
+
+for(let e of data){
+
+let name=e.name.toLowerCase()
+
+if(name.startsWith(q))
+start.push(e)
+
+else if(name.includes(q))
+contains.push(e)
+
+}
+
+let results=[...start,...contains].slice(0,10)
+
+results.forEach(r=>{
+
+let div=document.createElement("div")
+div.className="autoitem"
+
+div.innerText=r.name
+
+div.onclick=()=>{
+
+input.value=r.name
+box.innerHTML=""
+
+if(data===itemNames)
+searchItemById(r.id)
+else
+showMob(r.id)
+
+}
+
+box.appendChild(div)
+
+})
+
+}
+
+function searchItemById(id){
+
+let results=document.getElementById("results")
+
+results.innerHTML=""
+
+let box=document.createElement("div")
+box.className="section"
+
+box.innerHTML="<div class='title'>"+items[id]+" dropped by:</div>"
+
+if(!itemToMobs[id]){
+box.innerHTML+="No drops."
+results.appendChild(box)
+return
+}
+
+itemToMobs[id].forEach(m=>{
+
+let div=document.createElement("div")
+div.className="mob"
+
+div.innerHTML="👾 "+m.mob_name+" ("+(m.rate/100)+"%)"
+
+div.onclick=()=>showMob(m.mob_id)
+
+box.appendChild(div)
+
+})
+
+results.appendChild(box)
+
+}
+
+function showMob(id){
+
+let results=document.getElementById("results")
+results.innerHTML=""
+
+let stats=mobStats[id]
+
+let box=document.createElement("div")
+box.className="section"
+
+let img=document.createElement("img")
+img.src=generateMobSprite(id)
+img.className="sprite"
+
+box.appendChild(img)
+
+let threat=computeThreat(stats)
+
+box.innerHTML+=`
+<div class="title">👾 ${stats.name} <span class="tag">${threat}</span></div>
+
+<div class="stats">
+
+Level: ${stats.level}<br>
+HP: ${stats.hp}<br>
+ATK: ${stats.atk1}-${stats.atk2}<br>
+DEF: ${stats.def} | MDEF: ${stats.mdef}<br>
+
+STR ${stats.str}
+AGI ${stats.agi}
+VIT ${stats.vit}<br>
+
+INT ${stats.int}
+DEX ${stats.dex}
+LUK ${stats.luk}<br>
+
+Race: ${stats.race}<br>
+Element: ${stats.element}
+
+</div>
+`
+
+box.innerHTML+="<br><b>Drops</b><br>"
+
+if(mobToItems[id]){
+
+mobToItems[id].forEach(d=>{
+
+let drop=document.createElement("div")
+drop.className="drop"
+
+drop.innerHTML="📦 "+d.item_name+" ("+(d.rate/100)+"%)"
+
+box.appendChild(drop)
+
+})
+
+}
+
+if(mobSkills[id]){
+
+box.innerHTML+="<br><b>Skills</b><br>"
+
+mobSkills[id].forEach(s=>{
+
+let skill=document.createElement("div")
+skill.className="drop"
+
+skill.innerText="✨ "+s
+
+box.appendChild(skill)
+
+})
+
+}
+
+let spawns = mobSpawn[String(id)]
+
+if(spawns && spawns.length){
+
+box.innerHTML+="<br><b>Spawn Maps</b><br>"
+
+let counts={}
+
+spawns.forEach(m=>{
+counts[m]=(counts[m]||0)+1
+})
+
+for(let m in counts){
+
+let map=document.createElement("div")
+map.className="drop"
+map.innerText=`🗺 ${m} (${counts[m]})`
+
+box.appendChild(map)
+
+}
+
+}
+
+results.appendChild(box)
+
+}
+
+document.getElementById("itemSearch").addEventListener("input",()=>{
+
+autocomplete(
+document.getElementById("itemSearch"),
+itemNames,
+document.getElementById("itemAuto")
+)
+
+})
+
+document.getElementById("mobSearch").addEventListener("input",()=>{
+
+autocomplete(
+document.getElementById("mobSearch"),
+mobNames,
+document.getElementById("mobAuto")
+)
+
+})
+
+document.addEventListener("click",e=>{
+
+if(!e.target.closest(".searchbox")){
+document.getElementById("itemAuto").innerHTML=""
+document.getElementById("mobAuto").innerHTML=""
+}
+
+})
+
+load()
+
+</script>
+
+</body>
+</html>

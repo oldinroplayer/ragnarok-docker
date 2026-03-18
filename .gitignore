@@ -1,0 +1,24 @@
+# Ragnarok data (copyright)
+data/*
+!data/.keep
+
+data_base/*
+!data_base/.keep
+
+
+# runtime worlds
+worlds/
+
+# logs
+logs/
+
+# database dumps
+*.sql
+
+# python cache
+__pycache__/
+*.pyc
+
+# env files
+.env
+.env.rando
